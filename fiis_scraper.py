@@ -81,8 +81,6 @@ class Fundo:
         else:
             self.resultado.append(0)
 
-        print(self.resultado)
-
         self.writeToCSV()
 
     def writeToCSV(self):
