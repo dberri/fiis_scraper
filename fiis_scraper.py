@@ -1,3 +1,6 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
 import requests
 import bs4 as bs
 import re
@@ -6,7 +9,8 @@ import os
 import csv
 
 FILE_NAME = 'analysis.csv'
-
+DIVIDEND_YIELD = 5
+PRICE_OVER_NETWORTH = 1.2
 
 class Fundo:
     ticker = ''
@@ -41,40 +45,43 @@ class Fundo:
 
     def getIndicadores(self):
         print(f'Getting data for {self.ticker.upper()}...')
-        data = requests.get(f'https://fiis.com.br/{self.ticker}/?aba=indicadores')
-        # data.status_code
-        # ?aba=geral
+        data = requests.get(f'https://fiis.com.br/{self.ticker}')
         self.soup = bs.BeautifulSoup(data.content, 'html.parser')
 
-        self.searchStuff()
+        if self.soup:
+            self.searchStuff()
+    
+    def getDividendYield(self):
+        dyItem = self.soup.find(id="informations--indexes").find_all(class_='item')[0]
+        dy =  dyItem.find_all(class_="value")[0].get_text()
+        return float(re.search(r'\d+,\d+', dy).group(0).replace(',', '.')) * 12
+
+    def getCurrentPrice(self):
+        return float(self.soup.find(class_="item quotation").find(class_="value").get_text().replace(',', '.'))
+
+    def getNetWorth(self):
+        netWorthItem = self.soup.find(id="informations--indexes").find_all(class_='item')[-1]
+        netWorth = netWorthItem.find_all(class_="value")[0].get_text()
+        return float(re.search(r'\d+,\d+', netWorth).group(0).replace(',', '.'))
 
     def searchStuff(self):
-        search = [
-            ['Rendimento % médio 12 meses', r"\d+,\d+%"],
-            ['Cotação base', r"R\$ \d+,\d+"],
-            ['Rendimento %:', r"\d+,\d+%"],
-            ['Cotação/Valor Patrimonial:', r"\d+,\d+"],
-        ]
-
         data = []
-        for search_str in search:
-            result = self.soup.find_all(string=re.compile(search_str[0]))
-            parsed = re.findall(search_str[1], result[0])
-            # print(search_str[0])
-            # print(parsed[0])
-            # print('')
-            value_str = re.search(r'\d+,\d+', parsed[0]).group(0)
-            value_num = float(value_str.replace(',', '.'))
-            data.append(value_num)
+        dy = self.getDividendYield()
+        data.append(dy)
+        price = self.getCurrentPrice()
+        data.append(price)
+        netWorthPerQuota = self.getNetWorth()
+        data.append(netWorthPerQuota)
+        data.append(price / netWorthPerQuota)
 
         self.resultado = data
 
-        if self.resultado[0] > 7.5 and self.resultado[3] < 1.1:
+        if self.resultado[0] > DIVIDEND_YIELD and self.resultado[3] < PRICE_OVER_NETWORTH:
             self.resultado.append(1)
         else:
             self.resultado.append(0)
 
-        # print(self.resultado)
+        print(self.resultado)
 
         self.writeToCSV()
 
@@ -84,7 +91,7 @@ class Fundo:
             writer = csv.writer(csvfile, delimiter=',')
             # writer.writerow([
             #     "Ticker",
-            #     "Rendimento anual (%)",
+            #     "Dividend Yield (%)",
             #     "Cotação",
             #     "Rendimento mês (%)",
             #     "C/VP"
@@ -92,7 +99,7 @@ class Fundo:
             writer.writerow([self.ticker.upper()] + self.resultado)
 
 
-if __name__ == __main__:
+if __name__ == "__main__":
 
     if (len(sys.argv) > 1):
         Fundo.writeCSVHeader()
